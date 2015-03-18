@@ -1,53 +1,57 @@
 #!/usr/bin/env python
 from __future__ import print_function
+import argparse
 import glob
 import os
 from os.path import basename, exists
 import subprocess
 from qgisgcp2gdal import parse
 
-''' Georegister images in ../pdf, using ../gcp, and output to ../tif'''
-''' Optional extent for output specified in ../ext '''
-''' Optional polygon shapefile of areas to "white out" in ../shp '''
 if __name__ == "__main__":
 
-    # Get a list of PDF files based on the working folder
-    pdfs = glob.glob(os.getcwd() + "/../pdf/*.pdf")
-    pdfs.sort()
+    parser = argparse.ArgumentParser(description='Georegister an image ' \
+        'based on ground control points collected in QGIS.')
+    parser.add_argument("src_image", help="source image file to be registered")
+    parser.add_argument("gcp_file", help="ground control points collected in QGIS")
+    parser.add_argument("EPSG", help="target coordinate system e.g. EPSG:4283")
+    parser.add_argument("dst_image", help="destination GeoTIFF image file to be created")
+    parser.add_argument("-p", "--poly_order", type=int, default=1, choices=[1,2,3], \
+                        help="polynomial transormation order")
+    parser.add_argument("-e", "--extent_file", help="text file describing output extent")
+    parser.add_argument("-s", "--shapefile", \
+                        help="polygon shape file where image should be whitened")
+    parser.add_argument("-v", "--verbose", action="store_true", \
+                        help="print detailed gdal commands")
+    
+    args = parser.parse_args()
 
-    for pdf in pdfs:
+    with open(args.gcp_file) as f:
 
-        gcp = os.getcwd() + "/../gcp/" + basename(pdf) + ".points"
-        if not exists(gcp):
-            # print("GCP file not found for PDF:", basename(pdf))
-            continue
+        gcp = parse(f)
+        tmp =  args.dst_image + ".tmp.tif"
+        cmd = "/usr/bin/gdal_translate " + gcp
+        cmd += " -of GTiff -a_srs " + args.EPSG + " "
+        cmd += args.src_image + " " + tmp
+        if args.verbose: print(cmd)
+        subprocess.check_call(cmd, shell=True)
 
-        with open(gcp) as f:
+        cmd = "/usr/bin/gdalwarp -r near -order " + str(args.poly_order) + " "
+        cmd += "-co COMPRESS=NONE "
+        # TODO: This should be optional
+        cmd += "-overwrite "
+        if args.extent_file:
+            with open(args.extent_file) as ext_f:
+                cmd += "-te " + ext_f.read().rstrip("\n")
+        cmd += " " + tmp + " " + args.dst_image
+        if args.verbose: print(cmd)
+        subprocess.check_call(cmd, shell=True)
+        os.remove(tmp)
 
-            gcp = parse(f)
-            tmp =  "/tmp/" + basename(pdf) + ".tif"
-            cmd = "/usr/bin/gdal_translate " + gcp
-            cmd += " -of GTiff -a_srs EPSG:4283 "
-            cmd += pdf + " " + tmp
+        if (args.shapefile):
+            cmd = "gdal_rasterize -b 1 -b 2 -b 3 "
+            cmd += "-burn 255 -burn 255 -burn 255 "
+            cmd += "-l " + basename(args.shapefile)[:-4] + " "
+            cmd += args.shapefile + " "
+            cmd += args.dst_image
+            if args.verbose: print(cmd)
             subprocess.check_call(cmd, shell=True)
-
-            tif = os.getcwd() + "/../tif/" + \
-                basename(pdf).replace(".pdf", ".tif")
-            cmd = "/usr/bin/gdalwarp -r near -order 1 -co COMPRESS=NONE "
-            cmd += "-overwrite "
-            ext = os.getcwd() + "/../ext/" + basename(pdf) + ".ext"
-            if os.path.exists(ext):
-	    	with open(ext) as ext_f:
-                    cmd += "-te " + ext_f.read().rstrip("\n")
-            cmd += " " + tmp + " " + tif
-            subprocess.check_call(cmd, shell=True)
-            os.remove(tmp)
-
-            shp = os.getcwd() + "/../shp/" + \
-                basename(pdf).replace(".pdf", ".shp")
-            if os.path.exists(shp):
-                cmd = "gdal_rasterize -b 1 -b 2 -b 3 "
-                cmd += "-burn 255 -burn 255 -burn 255 "
-                cmd += "-l " + basename(shp)[:-4] + " " + shp + " "
-                cmd += tif
-                subprocess.check_call(cmd, shell=True)
