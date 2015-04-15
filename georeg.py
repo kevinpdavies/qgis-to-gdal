@@ -29,13 +29,13 @@ if __name__ == "__main__":
 
         gcp = parse(f)
         tmp =  args.dst_image + ".tmp.tif"
-        cmd = "/usr/bin/gdal_translate " + gcp
+        cmd = "gdal_translate " + gcp
         cmd += " -of GTiff -a_srs " + args.EPSG + " "
         cmd += args.src_image + " " + tmp
         if args.verbose: print(cmd)
         subprocess.check_call(cmd, shell=True)
 
-        cmd = "/usr/bin/gdalwarp -r near -order " + str(args.poly_order) + " "
+        cmd = "gdalwarp -r near -order " + str(args.poly_order) + " "
         cmd += "-co COMPRESS=NONE "
         # TODO: This should be optional
         cmd += "-overwrite "
