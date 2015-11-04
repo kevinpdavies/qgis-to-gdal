@@ -1,11 +1,17 @@
 #!/usr/bin/env python
 from __future__ import print_function
 import argparse
-import glob
 import os
-from os.path import basename, exists
+from os.path import basename
 import subprocess
 from qgisgcp2gdal import parse
+
+def go(cmd): 
+    out = subprocess.check_output(cmd, shell=True)
+    print(out)
+    if "done" not in out: # Some failures don't set the exit code so check
+        raise Exception("gdal_translate failed")
+    return
 
 if __name__ == "__main__":
 
@@ -33,8 +39,8 @@ if __name__ == "__main__":
         cmd += " -of GTiff -a_srs " + args.EPSG + " "
         cmd += args.src_image + " " + tmp
         if args.verbose: print(cmd)
-        subprocess.check_call(cmd, shell=True)
-
+        go(cmd)
+        
         cmd = "gdalwarp -r near -order " + str(args.poly_order) + " "
         cmd += "-co COMPRESS=NONE "
         # TODO: This should be optional
@@ -44,7 +50,7 @@ if __name__ == "__main__":
                 cmd += "-te " + ext_f.read().rstrip("\n")
         cmd += " " + tmp + " " + args.dst_image
         if args.verbose: print(cmd)
-        subprocess.check_call(cmd, shell=True)
+        go(cmd)
         os.remove(tmp)
 
         if (args.shapefile):
